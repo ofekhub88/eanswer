@@ -1,8 +1,5 @@
 
-def CHART_URL = "<Repo for charts url> "
-def CHART_NAME = "aspnet-core"
-def app_namspace = "webapp"
-def maxAttempts = 12
+
 pipeline {
     agent {
         kuubernetes {
@@ -11,7 +8,13 @@ pipeline {
             defaultContainer 'jnlp'
     }
     }
-     agent any
+    environment {
+        ROLLBACK_FLAG = 'false' // Set this to 'true' or 'false' based on your conditions
+        CHART_URL = "<Repo for charts url> "
+        CHART_NAME = "aspnet-core"
+        app_namspace = "webapp"
+        maxAttempts = 12
+    }
      options {
         timeout(time: 5, unit: 'MINUTES')
     }
@@ -60,7 +63,7 @@ pipeline {
                  print("[INFO] Upload helm chart to nexus ...")
                  script {
                      // Package the aspnet-core and push it to Nexus with the build number as the version
-                     sh "helm package ${CHART_NAME} --version ${env.BUILD_NUMBER}"
+                     sh "helm package ${env.CHART_NAME} --version ${env.BUILD_NUMBER}"
                  }
                  script {
                      withCredentials([usernamePassword(credentialsId:DOCKER_REPO_ID, usernameVariable:'REPO_USER', passwordVariable:'REPO_PASSWORD')]) {
@@ -71,21 +74,21 @@ pipeline {
                                  set -x
                              fi
              
-                             RESPONSE_CODE=`curl -v -u ${REPO_USER}:${REPO_PASSWORD} ${CHART_URL}\
-                                                 --upload-file ${CHART_NAME}-${buildNo}.tgz \
+                             RESPONSE_CODE=`curl -v -u ${REPO_USER}:${REPO_PASSWORD} ${env.CHART_URL}\
+                                                 --upload-file ${env.CHART_NAME}-${buildNo}.tgz \
                                                  --write-out '%{http_code}' \
                                                  --output ${WORKSPACE}/response.txt`
              
                              if [[ "\${RESPONSE_CODE}" -ne 200 ]]
                              then
-                                 echo "[ERROR] Failed to upload helm chart [${CHART_NAME}] to ${CHART_URL}. Got [\${RESPONSE_CODE}] code."
+                                 echo "[ERROR] Failed to upload helm chart [${env.CHART_NAME}] to ${env.CHART_URL}. Got [\${RESPONSE_CODE}] code."
                                  if [[ -f "${WORKSPACE}/response.txt" ]]
                                  then
                                      cat ${WORKSPACE}/response.txt
                                  fi
                                  exit 1
                              fi
-                             echo "[INFO] successfully upload helm chart to ${CHART_URL} repository"
+                             echo "[INFO] successfully upload helm chart to ${env.CHART_URL} repository"
                          """
                      }
                    print("[INFO] Helm chart upload finished successfully")
@@ -97,7 +100,7 @@ pipeline {
                 script {
                     // Install or upgrade the helm chart on the namespac
                     
-                    sh "helm upgrade --install ${CHART_NAME} ${CHART_NAME}-${env.BUILD_NUMBER}.tgz --namespace ${app_namspace}"
+                    sh "helm upgrade --install ${env.CHART_NAME} ${env.CHART_NAME}-${env.BUILD_NUMBER}.tgz --namespace ${app_namspace}"
                 }
             }
         }
@@ -108,7 +111,7 @@ pipeline {
                     def chartVersion = env.BUILD_NUMBER
                     
                     // Check the pod with the latest version
-                    sh "kubectl get pods -n ${app_namspace} --selector=app=${CHART_NAME},chart=${CHART_NAME},version=${env.BUILD_NUMBER}"
+                    sh "kubectl get pods -n ${app_namspace} --selector=app=${env.CHART_NAME},chart=${env.CHART_NAME},version=${env.BUILD_NUMBER}"
                     
                     // Perform URL test
                     // ...
@@ -119,9 +122,9 @@ pipeline {
             steps {
                 script {
                     // Define the URL of the ASP.NET Core application
-                    def appUrl = "http://${CHART_NAME}.${app_namspace}.svc.cluster.local"
+                    def appUrl = "http://${env.CHART_NAME}.${env.app_namspace}.svc.cluster.local"
                     def responseCode = ""
-                    for (int i = 0; i < maxAttempts; i++) {
+                    for (int i = 0; i < env.maxAttempts; i++) {
                         // Execute a curl command to check the URL
                         responseCode = sh(script: "curl -o /dev/null -s -w \"%{http_code}\" ${appUrl}", returnStdout: true).trim() 
     
@@ -137,8 +140,21 @@ pipeline {
                 }
                 // If the response code is still not 200 after all attempts, fail the build
                 if (responseCode != '200') {
-                        error("[ERROR] Failed to access the URL: ${appUrl} after ${maxAttempts} attempts. Final HTTP response code: ${responseCode}")
+                        unstable(message: "[ERROR] Failed to access the URL: ${appUrl} after ${maxAttempts} attempts. Final HTTP response code: ${responseCode}")
+                        ROLLBACK = 'true'
                }
+        }
+    }
+  }
+  stage('Rollback Stage') {
+    when {
+        // Execute this stage only if the previous stage (Check URL) fails
+        expression { currentBuild.resultIsBetterOrEqualTo('FAILURE') && env.ROLLBACK_FLAG == 'true'}
+    }
+    steps {
+        script {
+            //run helm with previos version 
+            //delete the char with current build
         }
     }
   }
