@@ -17,7 +17,7 @@ Step-by-Step Implementation:
 2) Create a DevOps namespace in the Kubernetes cluster using the following command:
 Command: kubectl apply -f namespace.yaml
 3) Deploy the Jenkins instance on the Kubernetes cluster using Helm:
-Command:``` helm upgrade --install devops -n devops jenkins/jenkins -f jenkins/custom_value.yaml
+Command:``` helm upgrade --install devops -n devops jenkins/jenkins -f jenkins/custom_value.yaml```
 4) Once Jenkins is up and running, log in and perform the following configurations:
 - Login to Jenkins and go to <URL>//credentials/store/system/domain/_/.
 - Define the following credentials:
