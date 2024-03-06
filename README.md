@@ -25,6 +25,7 @@ Command:
    <pre>
 ``` helm upgrade --install devops -n devops jenkins/jenkins -f jenkins/custom_value.yaml```
 </pre>
+
 6) Once Jenkins is up and running, log in and perform the following configurations:
 - Login to Jenkins and go to <URL>//credentials/store/system/domain/_/.
 - Define the following credentials:
