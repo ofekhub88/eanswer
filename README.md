@@ -15,7 +15,7 @@ Step-by-Step Implementation:
 
 1) Clone the repository to your local machine or desired repository location.
 2) Create a DevOps namespace in the Kubernetes cluster using the following command:
-Command: kubectl apply -f namespace.yaml
+Command: ```kubectl apply -f namespace.yaml ```
 3) Deploy the Jenkins instance on the Kubernetes cluster using Helm:
 Command:``` helm upgrade --install devops -n devops jenkins/jenkins -f jenkins/custom_value.yaml```
 4) Once Jenkins is up and running, log in and perform the following configurations:
@@ -32,4 +32,4 @@ Command:``` helm upgrade --install devops -n devops jenkins/jenkins -f jenkins/c
 - Attach the credentials you created for Git.
 - Specify the branch path.
 - Leave the default Jenkinsfile, as it will use the Jenkins file from the root directory.
-6) Continue with the remaining steps as per your specific pipeline requirements.
+6) Run teh pipline 
