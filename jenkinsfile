@@ -1,0 +1,146 @@
+
+def CHART_URL = "<Repo for charts url> "
+def CHART_NAME = "aspnet-core"
+def app_namspace = "webapp"
+def maxAttempts = 12
+pipeline {
+    agent {
+        kuubernetes {
+            cloud 'my_kubernetes' 
+            label 'jenkins-slave_pod'
+            defaultContainer 'jnlp'
+    }
+    }
+     agent any
+     options {
+        timeout(time: 5, unit: 'MINUTES')
+    }
+    parameters {
+        choice(
+            name: 'DEBUG_LEVEL',
+            choices: ['INFO', 'DEBUG', 'ERROR'],
+            description: 'Select the debug level'
+        )
+    }
+    stages {
+        stage('set_env_vars') {
+            steps {
+                script {
+                    // Read credentials and put them into global pipeline variables                   
+                    env.CHART_REPO = 'your-chart-repo-url'
+
+                }
+                script {
+                    // Get the Kubernetes config from Jenkins credentials
+                    withCredentials([file(credentialsId: 'k8s-config', variable: 'KUBECONFIG_CONTENT')]) {
+                        // Set the KUBECONFIG environment variable
+                        sh "mkdir -p .kube"
+                        writeFile file: '.kube/config', text: "${KUBECONFIG_CONTENT}"
+                    }
+                }
+            }
+        }
+        stage('helm chart lint') {
+            steps {
+                script {
+                    // Run lint on the chart in the aspnet-core directory with value file aspnet.yaml
+                    def chartDir = 'aspnet-core'
+                    def valueFile = 'aspnet.yaml'
+                    
+                    def lintResult = sh(script: "helm lint ${chartDir} --values ${valueFile}", returnStatus: true)
+                    
+                    if (lintResult != 0) {
+                        error('Helm chart lint failed')
+                    }
+                }
+            }
+        }
+        stage('package and push to chart repo') {
+            steps {
+                 print("[INFO] Upload helm chart to nexus ...")
+                 script {
+                     // Package the aspnet-core and push it to Nexus with the build number as the version
+                     sh "helm package ${CHART_NAME} --version ${env.BUILD_NUMBER}"
+                 }
+                 script {
+                     withCredentials([usernamePassword(credentialsId:DOCKER_REPO_ID, usernameVariable:'REPO_USER', passwordVariable:'REPO_PASSWORD')]) {
+                         sh """
+                             set +x
+                             if [ "\${AI_LOG_LEVEL}" == "DEBUG" ]
+                             then
+                                 set -x
+                             fi
+             
+                             RESPONSE_CODE=`curl -v -u ${REPO_USER}:${REPO_PASSWORD} ${CHART_URL}\
+                                                 --upload-file ${CHART_NAME}-${buildNo}.tgz \
+                                                 --write-out '%{http_code}' \
+                                                 --output ${WORKSPACE}/response.txt`
+             
+                             if [[ "\${RESPONSE_CODE}" -ne 200 ]]
+                             then
+                                 echo "[ERROR] Failed to upload helm chart [${CHART_NAME}] to ${CHART_URL}. Got [\${RESPONSE_CODE}] code."
+                                 if [[ -f "${WORKSPACE}/response.txt" ]]
+                                 then
+                                     cat ${WORKSPACE}/response.txt
+                                 fi
+                                 exit 1
+                             fi
+                             echo "[INFO] successfully upload helm chart to ${CHART_URL} repository"
+                         """
+                     }
+                   print("[INFO] Helm chart upload finished successfully")
+                }
+            }
+        }
+        stage('install or upgrade helm chart') {
+            steps {
+                script {
+                    // Install or upgrade the helm chart on the namespac
+                    
+                    sh "helm upgrade --install ${CHART_NAME} ${CHART_NAME}-${env.BUILD_NUMBER}.tgz --namespace ${app_namspace}"
+                }
+            }
+        }
+        stage('validate chart installation') {
+            steps {
+                script {
+                    // Validate the chart installation by checking the pod with the latest version and testing the URL
+                    def chartVersion = env.BUILD_NUMBER
+                    
+                    // Check the pod with the latest version
+                    sh "kubectl get pods -n ${app_namspace} --selector=app=${CHART_NAME},chart=${CHART_NAME},version=${env.BUILD_NUMBER}"
+                    
+                    // Perform URL test
+                    // ...
+                }
+            }
+        }
+         stage('Check URL') {
+            steps {
+                script {
+                    // Define the URL of the ASP.NET Core application
+                    def appUrl = "http://${CHART_NAME}.${app_namspace}.svc.cluster.local"
+                    def responseCode = ""
+                    for (int i = 0; i < maxAttempts; i++) {
+                        // Execute a curl command to check the URL
+                        responseCode = sh(script: "curl -o /dev/null -s -w \"%{http_code}\" ${appUrl}", returnStdout: true).trim() 
+    
+                        // Check the HTTP response code
+                        if (responseCode == '200') {
+                            echo("[INFO] uccessfully accessed the URL: ${appUrl}")
+                            break
+                        } else {
+                            echo("[WARNING] Attempt ${i+1}: Failed to access the URL: ${appUrl}. HTTP response code: ${responseCode}")
+                        }
+                        sleep(time: 5, unit: 'SECONDS')
+                    
+                }
+                // If the response code is still not 200 after all attempts, fail the build
+                if (responseCode != '200') {
+                        error("[ERROR] Failed to access the URL: ${appUrl} after ${maxAttempts} attempts. Final HTTP response code: ${responseCode}")
+               }
+        }
+    }
+  }
+}
+}

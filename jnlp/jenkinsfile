@@ -1,0 +1,65 @@
+// there is option to manage image version by build no paramter or by git commit id
+def IMAGE_TAG = "jenkins-jnlp-docker-helm:1.0"
+def DOCKER_REPO_URL = "<Repo registry URL :port> "
+pipeline {
+    agent any
+        options {
+        timeout(time: 5, unit: 'MINUTES')
+    }
+    parameters {
+        choice(
+            name: 'DEBUG_LEVEL',
+            choices: ['INFO', 'DEBUG', 'ERROR'],
+            description: 'Select the debug level'
+        )
+    }
+ 
+    stages {
+        stage('Get K8s Config') {
+            steps {
+                script {
+                    // Get the Kubernetes config from Jenkins credentials
+                    withCredentials([file(credentialsId: 'k8s-config', variable: 'KUBECONFIG_CONTENT')]) {
+                        // Set the KUBECONFIG environment variable
+                        sh "mkdir -p .kube"
+                        writeFile file: '.kube/config', text: "${KUBECONFIG_CONTENT}"
+                    }
+                }
+                sh "kubectl get ns devops || kubectl create ns devops"
+
+            }
+        }
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    
+                    // Build the Docker image
+                    sh "docker build  -t ${DOCKER_REPO_URL}:${IMAGE_TAG}  -f ./jnlp"
+                }
+            }
+        }
+
+        stage('Push Docker Image') {
+            steps {
+                // Push  the image
+                 withCredentials([usernamePassword(credentialsId:DOCKER_REPO_ID, usernameVariable:'REPO_USER', passwordVariable:'REPO_PASSWORD')]) {
+                    sh '''
+                        set +x
+                        if [ "\${DEBUG_LEVEL}" == "DEBUG" ]
+                        then
+                            set -x
+                        fi
+                        docker login ${DOCKER_REPO_URL} -u ${REPO_USER} -p ${REPO_PASSWORD}
+                        docker push ${DOCKER_REPO_URL}:${IMAGE_TAG}
+                        if [[ \$? -ne 0 ]]
+                        then
+                            echo "[ERROR] Failed to create docker image"
+                            exit 1
+                        fi
+                        echo "[INFO] successfully created image ${DOCKER_REPO_URL}:${IMAGE_TAG}"
+                    '''
+                }
+            }
+        }
+    }
+}
