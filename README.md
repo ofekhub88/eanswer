@@ -4,7 +4,7 @@ Assumptions:
 The following checklist should be completed before proceeding with the deployment:
 
 1) A Kubernetes (k8s) cluster is available.
-2) Persistent Volume Claim (PVC) with PVC claim exists.
+2) Persistent Volume (PV) with PVC claim exists.
 3) You have the necessary permissions to manage resources in k8s using the .config file.
 4) Git source code management (SCM) is set up with a repository and access credentials.
 5) A repository is available to host the chart and Docker images, along with the necessary credentials.
