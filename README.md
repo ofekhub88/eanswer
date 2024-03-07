@@ -17,7 +17,9 @@ Step-by-Step Implementation:
 2) Create a DevOps namespace in the Kubernetes cluster using the following command:
 Command:
 
- ```kubectl apply -f namespace.yaml ```
+ ```
+ kubectl apply -f namespace.yaml
+```
 
 4) Deploy the Jenkins instance on the Kubernetes cluster using Helm:
 Command:
